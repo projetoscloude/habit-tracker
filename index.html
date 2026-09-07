@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Habit Tracker - Seu Acompanhamento de Hábitos</title>
+
+    <meta name="theme-color" content="#16a34a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Hábitos">
+
+    <script>
+        (function () {
+            function drawIcon(size) {
+                var canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                var ctx = canvas.getContext('2d');
+                var r = size * 0.22;
+                ctx.fillStyle = '#16a34a';
+                ctx.beginPath();
+                ctx.moveTo(r, 0);
+                ctx.arcTo(size, 0, size, size, r);
+                ctx.arcTo(size, size, 0, size, r);
+                ctx.arcTo(0, size, 0, 0, r);
+                ctx.arcTo(0, 0, size, 0, r);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = size * 0.09;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(size * 0.27, size * 0.53);
+                ctx.lineTo(size * 0.44, size * 0.7);
+                ctx.lineTo(size * 0.75, size * 0.32);
+                ctx.stroke();
+                return canvas.toDataURL('image/png');
+            }
+
+            try {
+                var icon180 = drawIcon(180);
+                var icon192 = drawIcon(192);
+                var icon512 = drawIcon(512);
+
+                var appleLink = document.createElement('link');
+                appleLink.rel = 'apple-touch-icon';
+                appleLink.href = icon180;
+                document.head.appendChild(appleLink);
+
+                var favicon = document.createElement('link');
+                favicon.rel = 'icon';
+                favicon.href = icon192;
+                document.head.appendChild(favicon);
+
+                var manifest = {
+                    name: 'Habit Tracker',
+                    short_name: 'Hábitos',
+                    start_url: '.',
+                    display: 'standalone',
+                    background_color: '#f8f7f5',
+                    theme_color: '#16a34a',
+                    icons: [
+                        { src: icon192, sizes: '192x192', type: 'image/png' },
+                        { src: icon512, sizes: '512x512', type: 'image/png' }
+                    ]
+                };
+                var manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+                var manifestLink = document.createElement('link');
+                manifestLink.rel = 'manifest';
+                manifestLink.href = URL.createObjectURL(manifestBlob);
+                document.head.appendChild(manifestLink);
+            } catch (e) { /* navegador sem suporte a canvas/manifest dinâmico */ }
+
+            // Remove qualquer service worker/cache de uma versão anterior deste app,
+            // que podia servir uma página desatualizada e fazer os dados parecerem sumir.
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then((regs) => {
+                    regs.forEach((reg) => reg.unregister());
+                }).catch(() => {});
+            }
+            if (window.caches && caches.keys) {
+                caches.keys().then((keys) => {
+                    keys.forEach((key) => caches.delete(key));
+                }).catch(() => {});
+            }
+
+            if (navigator.storage && navigator.storage.persist) {
+                navigator.storage.persist().catch(() => {});
+            }
+        })();
+    </script>
+
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            background: #f8f7f5;
+            color: #2c2c2a;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #2c2c2a;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #888780;
+            margin-bottom: 24px;
+        }
+
+        .progress-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .progress-card {
+            background: #f8f7f5;
+            padding: 14px;
+            border-radius: 10px;
+            border: 0.5px solid #d3d1c7;
+        }
+
+        .progress-label {
+            font-size: 12px;
+            color: #888780;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .progress-number {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #2c2c2a;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: #e5e4e0;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            transition: width 0.4s ease;
+            border-radius: 3px;
+        }
+
+        .daily { background: #16a34a; }
+
+        .calendar-section {
+            margin-bottom: 20px;
+        }
+
+        .calendar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .calendar-month-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #2c2c2a;
+            text-transform: capitalize;
+        }
+
+        .calendar-nav-btn {
+            background: transparent;
+            border: 0.5px solid #d3d1c7;
+            border-radius: 8px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #5f5e5a;
+            transition: all 0.2s;
+        }
+
+        .calendar-nav-btn:hover:not(:disabled) {
+            border-color: #185fa5;
+            color: #185fa5;
+            background: #e6f1fb;
+        }
+
+        .calendar-nav-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+
+        .calendar-weekday {
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #888780;
+            padding-bottom: 4px;
+        }
+
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #2c2c2a;
+            background: #f0efe9;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+
+        .calendar-day:hover {
+            transform: scale(1.08);
+        }
+
+        .calendar-day-blank {
+            background: transparent;
+            cursor: default;
+        }
+
+        .calendar-day-blank:hover {
+            transform: none;
+        }
+
+        .calendar-day-today {
+            box-shadow: 0 0 0 2px #185fa5 inset;
+        }
+
+        .calendar-day-selected {
+            box-shadow: 0 0 0 2px #2c2c2a inset;
+        }
+
+        .day-detail {
+            margin-top: 14px;
+            padding: 14px;
+            background: #f8f7f5;
+            border: 0.5px solid #d3d1c7;
+            border-radius: 10px;
+        }
+
+        .day-detail-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .day-detail-date {
+            font-size: 13px;
+            font-weight: 600;
+            color: #2c2c2a;
+        }
+
+        .day-detail-close {
+            background: transparent;
+            border: none;
+            color: #888780;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px;
+        }
+
+        .day-detail-close:hover {
+            color: #2c2c2a;
+        }
+
+        .day-detail-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .day-detail-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: #2c2c2a;
+        }
+
+        .day-detail-icon {
+            width: 18px;
+            height: 18px;
+            min-width: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .day-detail-item.done .day-detail-icon {
+            background: #d3f3e0;
+            color: #16a34a;
+        }
+
+        .day-detail-item.missed .day-detail-icon {
+            background: #fbe2e2;
+            color: #a32d2d;
+        }
+
+        .day-detail-item.no-data .day-detail-icon {
+            color: #b4b2a9;
+            font-size: 12px;
+        }
+
+        .day-detail-item.no-data .day-detail-name {
+            color: #b4b2a9;
+        }
+
+        .day-detail-empty {
+            font-size: 13px;
+            color: #888780;
+        }
+
+        .cal-level--1 { background: #f0efe9; color: #b4b2a9; }
+        .cal-level-0 { background: #f0efe9; color: #888780; }
+        .cal-level-1 { background: #bbf0cf; color: #14532d; }
+        .cal-level-2 { background: #6ee0a0; color: #14532d; }
+        .cal-level-3 { background: #16a34a; color: white; }
+
+        .calendar-legend {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            font-size: 11px;
+            color: #888780;
+            flex-wrap: wrap;
+        }
+
+        .legend-swatch {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            display: inline-block;
+            margin-left: 10px;
+        }
+
+        .legend-swatch:first-child {
+            margin-left: 0;
+        }
+
+        .habits-section {
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #5f5e5a;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .habits-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .habit-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            background: white;
+            border: 0.5px solid #d3d1c7;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .habit-item:hover {
+            background: #fafaf9;
+            border-color: #b4b2a9;
+        }
+
+        .habit-item.completed {
+            opacity: 0.6;
+        }
+
+        .habit-checkbox {
+            width: 20px;
+            height: 20px;
+            min-width: 20px;
+            cursor: pointer;
+            accent-color: #185fa5;
+        }
+
+        .habit-name {
+            flex: 1;
+            font-size: 15px;
+            font-weight: 500;
+            color: #2c2c2a;
+        }
+
+        .habit-item.completed .habit-name {
+            text-decoration: line-through;
+            color: #888780;
+        }
+
+        .delete-btn {
+            background: transparent;
+            border: 0.5px solid #d3d1c7;
+            border-radius: 8px;
+            padding: 6px 10px;
+            cursor: pointer;
+            color: #888780;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .delete-btn:hover {
+            border-color: #a32d2d;
+            color: #a32d2d;
+            background: #fcebeb;
+        }
+
+        .add-button {
+            width: 100%;
+            padding: 12px;
+            background: transparent;
+            border: 0.5px dashed #d3d1c7;
+            border-radius: 10px;
+            color: #185fa5;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            margin-top: 12px;
+        }
+
+        .add-button:hover {
+            border-color: #185fa5;
+            background: #e6f1fb;
+        }
+
+        .add-form {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .add-form input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 0.5px solid #d3d1c7;
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        .add-form input:focus {
+            outline: none;
+            border-color: #185fa5;
+            box-shadow: 0 0 0 2px #e6f1fb;
+        }
+
+        .confirm-btn, .cancel-btn {
+            padding: 10px 14px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .confirm-btn {
+            background: #185fa5;
+            color: white;
+        }
+
+        .confirm-btn:hover {
+            background: #0c447c;
+        }
+
+        .cancel-btn {
+            background: transparent;
+            border: 0.5px solid #d3d1c7;
+            color: #888780;
+        }
+
+        .cancel-btn:hover {
+            background: #f8f7f5;
+            border-color: #b4b2a9;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #888780;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state-text {
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .info-bar {
+            background: #e6f1fb;
+            border: 0.5px solid #85b7eb;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #0c447c;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .info-icon {
+            min-width: 20px;
+            margin-top: 2px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 16px;
+                border-radius: 12px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .progress-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const STORAGE_KEY = 'habitTrackerData_v2';
+
+        // IndexedDB é mais resistente do que localStorage quando o app é
+        // encerrado à força na tela de apps recentes do iOS (Home Screen web app).
+        const idbGet = (key) => new Promise((resolve) => {
+            if (!window.indexedDB) return resolve(null);
+            const req = indexedDB.open('habitTrackerDB', 1);
+            req.onupgradeneeded = () => { req.result.createObjectStore('kv'); };
+            req.onsuccess = () => {
+                try {
+                    const tx = req.result.transaction('kv', 'readonly');
+                    const getReq = tx.objectStore('kv').get(key);
+                    getReq.onsuccess = () => resolve(getReq.result || null);
+                    getReq.onerror = () => resolve(null);
+                } catch (e) { resolve(null); }
+            };
+            req.onerror = () => resolve(null);
+        });
+
+        const idbSet = (key, value) => new Promise((resolve) => {
+            if (!window.indexedDB) return resolve(false);
+            const req = indexedDB.open('habitTrackerDB', 1);
+            req.onupgradeneeded = () => { req.result.createObjectStore('kv'); };
+            req.onsuccess = () => {
+                try {
+                    const tx = req.result.transaction('kv', 'readwrite');
+                    tx.objectStore('kv').put(value, key);
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                } catch (e) { resolve(false); }
+            };
+            req.onerror = () => resolve(false);
+        });
+
+        function HabitTracker() {
+            const [habits, setHabits] = useState([]);
+            const [newHabitName, setNewHabitName] = useState('');
+            const [showAddForm, setShowAddForm] = useState(false);
+            const [completedToday, setCompletedToday] = useState({});
+            const [calendarMonth, setCalendarMonth] = useState(() => {
+                const d = new Date();
+                d.setDate(1);
+                d.setHours(0, 0, 0, 0);
+                return d;
+            });
+            const [selectedDate, setSelectedDate] = useState(null);
+
+            const today = new Date().toISOString().split('T')[0];
+
+            const getDefaultHabits = () => [
+                { id: 1, name: 'Exercício', history: {} },
+                { id: 2, name: 'Meditação', history: {} },
+                { id: 3, name: 'Leitura', history: {} },
+                { id: 4, name: 'Beber água', history: {} },
+                { id: 5, name: 'Dormir bem', history: {} },
+            ];
+
+            // Carregar dados: prioriza IndexedDB (mais confiável no iOS) e usa
+            // o localStorage como reforço/migração de versões anteriores.
+            useEffect(() => {
+                let cancelled = false;
+                (async () => {
+                    let data = await idbGet(STORAGE_KEY);
+                    if (!data) {
+                        const stored = localStorage.getItem(STORAGE_KEY);
+                        if (stored) {
+                            try { data = JSON.parse(stored); } catch (e) { data = null; }
+                        }
+                    }
+                    if (cancelled) return;
+                    if (data) {
+                        setHabits(data.habits || getDefaultHabits());
+                        setCompletedToday(data.completedToday || {});
+                    } else {
+                        const defaultHabits = getDefaultHabits();
+                        setHabits(defaultHabits);
+                        saveData(defaultHabits, {});
+                    }
+                })();
+                return () => { cancelled = true; };
+            }, []);
+
+            const saveData = (habitsToSave, completedTodayToSave) => {
+                const payload = {
+                    habits: habitsToSave,
+                    completedToday: completedTodayToSave,
+                    lastUpdated: new Date().toISOString()
+                };
+                try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch (e) { /* ignora */ }
+                idbSet(STORAGE_KEY, payload);
+            };
+
+            const toggleHabitToday = (habitId) => {
+                const newCompleted = { ...completedToday, [habitId]: !completedToday[habitId] };
+                setCompletedToday(newCompleted);
+
+                const updatedHabits = habits.map(h => {
+                    if (h.id === habitId) {
+                        return {
+                            ...h,
+                            history: { ...h.history, [today]: newCompleted[habitId] }
+                        };
+                    }
+                    return h;
+                });
+                setHabits(updatedHabits);
+                saveData(updatedHabits, newCompleted);
+            };
+
+            const addHabit = () => {
+                if (!newHabitName.trim()) return;
+                const newHabit = {
+                    id: Math.max(...habits.map(h => h.id), 0) + 1,
+                    name: newHabitName,
+                    history: { [today]: false }
+                };
+                const updated = [...habits, newHabit];
+                setHabits(updated);
+                setNewHabitName('');
+                setShowAddForm(false);
+                saveData(updated, completedToday);
+            };
+
+            const deleteHabit = (id) => {
+                const updated = habits.filter(h => h.id !== id);
+                setHabits(updated);
+                const newCompleted = { ...completedToday };
+                delete newCompleted[id];
+                saveData(updated, newCompleted);
+            };
+
+            const getProgressStats = () => {
+                const completedTodayCount = habits.filter(h => completedToday[h.id]).length;
+                const dailyPercent = habits.length > 0 ? Math.round((completedTodayCount / habits.length) * 100) : 0;
+                return { dailyPercent, completedTodayCount };
+            };
+
+            const { dailyPercent } = getProgressStats();
+
+            const getMonthMatrix = (monthDate) => {
+                const year = monthDate.getFullYear();
+                const month = monthDate.getMonth();
+                const startWeekday = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const cells = [];
+                for (let i = 0; i < startWeekday; i++) cells.push(null);
+                for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+                return cells;
+            };
+
+            const getDateStr = (year, month, day) => {
+                const mm = String(month + 1).padStart(2, '0');
+                const dd = String(day).padStart(2, '0');
+                return `${year}-${mm}-${dd}`;
+            };
+
+            const getDayLevel = (dateStr) => {
+                if (habits.length === 0) return -1;
+                const hasAnyEntry = habits.some(h => Object.prototype.hasOwnProperty.call(h.history, dateStr));
+                if (!hasAnyEntry) return -1;
+                const completed = habits.filter(h => h.history[dateStr]).length;
+                const percent = completed / habits.length;
+                if (percent === 0) return 0;
+                if (percent < 1) return percent < 0.5 ? 1 : 2;
+                return 3;
+            };
+
+            const changeMonth = (delta) => {
+                setCalendarMonth(prev => {
+                    const d = new Date(prev);
+                    d.setMonth(d.getMonth() + delta);
+                    return d;
+                });
+            };
+
+            const now = new Date();
+            const isCurrentMonth = calendarMonth.getFullYear() === now.getFullYear() && calendarMonth.getMonth() === now.getMonth();
+            const monthLabelRaw = calendarMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+            const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1);
+
+            const formatSelectedDate = (dateStr) => {
+                const [y, m, d] = dateStr.split('-').map(Number);
+                const raw = new Date(y, m - 1, d).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+                return raw.charAt(0).toUpperCase() + raw.slice(1);
+            };
+
+            const toggleSelectedDate = (dateStr) => {
+                setSelectedDate(prev => prev === dateStr ? null : dateStr);
+            };
+
+            return (
+                <div className="container">
+                    <h1>🎯 Habit Tracker</h1>
+                    <p className="subtitle">Acompanhe seus hábitos diários e veja seu progresso</p>
+
+                    <div className="info-bar">
+                        <div className="info-icon">ℹ️</div>
+                        <div>Seus dados são salvos localmente no navegador. Abra este arquivo quando quiser acompanhar seu progresso!</div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="progress-grid">
+                        <div className="progress-card">
+                            <div className="progress-label">Hoje</div>
+                            <div className="progress-number">{dailyPercent}%</div>
+                            <div className="progress-bar">
+                                <div className="progress-fill daily" style={{ width: `${dailyPercent}%` }}></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Hábitos */}
+                    <div className="habits-section">
+                        <div className="section-title">📋 Seus Hábitos</div>
+                        {habits.length > 0 ? (
+                            <div className="habits-list">
+                                {habits.map(habit => (
+                                    <div
+                                        key={habit.id}
+                                        className={`habit-item ${completedToday[habit.id] ? 'completed' : ''}`}
+                                        onClick={() => toggleHabitToday(habit.id)}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            className="habit-checkbox"
+                                            checked={completedToday[habit.id] || false}
+                                            onChange={() => { }}
+                                        />
+                                        <div className="habit-name">{habit.name}</div>
+                                        <button
+                                            className="delete-btn"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                deleteHabit(habit.id);
+                                            }}
+                                            title="Deletar hábito"
+                                        >
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="empty-state">
+                                <div className="empty-state-icon">✨</div>
+                                <div className="empty-state-text">Nenhum hábito ainda. Comece a criar!</div>
+                            </div>
+                        )}
+
+                        {!showAddForm ? (
+                            <button className="add-button" onClick={() => setShowAddForm(true)}>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Novo hábito
+                            </button>
+                        ) : (
+                            <div className="add-form">
+                                <input
+                                    type="text"
+                                    placeholder="Nome do novo hábito..."
+                                    value={newHabitName}
+                                    onChange={(e) => setNewHabitName(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && addHabit()}
+                                    autoFocus
+                                />
+                                <button className="confirm-btn" onClick={addHabit} title="Confirmar">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                </button>
+                                <button className="cancel-btn" onClick={() => setShowAddForm(false)} title="Cancelar">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Calendário mensal */}
+                    <div className="calendar-section">
+                        <div className="section-title">📅 Visão do mês</div>
+                        <div className="calendar-header">
+                            <button className="calendar-nav-btn" onClick={() => changeMonth(-1)} title="Mês anterior">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                            </button>
+                            <div className="calendar-month-label">{monthLabel}</div>
+                            <button className="calendar-nav-btn" onClick={() => changeMonth(1)} disabled={isCurrentMonth} title="Próximo mês">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                            </button>
+                        </div>
+                        <div className="calendar-grid">
+                            {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((wd, i) => (
+                                <div key={`wd-${i}`} className="calendar-weekday">{wd}</div>
+                            ))}
+                            {getMonthMatrix(calendarMonth).map((day, idx) => {
+                                if (day === null) {
+                                    return <div key={`blank-${idx}`} className="calendar-day calendar-day-blank"></div>;
+                                }
+                                const dateStr = getDateStr(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
+                                const level = getDayLevel(dateStr);
+                                const isToday = dateStr === today;
+                                const isSelected = dateStr === selectedDate;
+                                return (
+                                    <div
+                                        key={dateStr}
+                                        className={`calendar-day cal-level-${level}${isToday ? ' calendar-day-today' : ''}${isSelected ? ' calendar-day-selected' : ''}`}
+                                        title={dateStr}
+                                        onClick={() => toggleSelectedDate(dateStr)}
+                                    >
+                                        {day}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="calendar-legend">
+                            <span className="legend-swatch cal-level--1"></span>Sem dados
+                            <span className="legend-swatch cal-level-1"></span>Parcial
+                            <span className="legend-swatch cal-level-3"></span>Completo
+                        </div>
+
+                        {selectedDate && (
+                            <div className="day-detail">
+                                <div className="day-detail-header">
+                                    <div className="day-detail-date">{formatSelectedDate(selectedDate)}</div>
+                                    <button className="day-detail-close" onClick={() => setSelectedDate(null)} title="Fechar">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                    </button>
+                                </div>
+                                {habits.length > 0 ? (
+                                    <div className="day-detail-list">
+                                        {habits.map(h => {
+                                            const hasEntry = Object.prototype.hasOwnProperty.call(h.history, selectedDate);
+                                            const done = !!h.history[selectedDate];
+                                            const status = done ? 'done' : hasEntry ? 'missed' : 'no-data';
+                                            return (
+                                                <div key={h.id} className={`day-detail-item ${status}`}>
+                                                    <span className="day-detail-icon">
+                                                        {done ? (
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                        ) : hasEntry ? (
+                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                                        ) : '–'}
+                                                    </span>
+                                                    <span className="day-detail-name">{h.name}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="day-detail-empty">Nenhum hábito cadastrado.</div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<HabitTracker />, document.getElementById('root'));
+    </script>
+</body>
+</html>
