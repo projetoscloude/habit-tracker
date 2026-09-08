@@ -626,11 +626,20 @@
             req.onerror = () => resolve(false);
         });
 
+        // Data local (não UTC) — toISOString() usa UTC e adianta o dia em
+        // fusos negativos (ex: Brasil, UTC-3) a partir das 21h no horário local.
+        const getLocalDateStr = (d = new Date()) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        };
+
         function HabitTracker() {
             const [habits, setHabits] = useState([]);
             const [newHabitName, setNewHabitName] = useState('');
             const [showAddForm, setShowAddForm] = useState(false);
-            const [completedToday, setCompletedToday] = useState({});
+            const [today, setToday] = useState(() => getLocalDateStr());
             const [calendarMonth, setCalendarMonth] = useState(() => {
                 const d = new Date();
                 d.setDate(1);
@@ -639,7 +648,20 @@
             });
             const [selectedDate, setSelectedDate] = useState(null);
 
-            const today = new Date().toISOString().split('T')[0];
+            // Reavalia a data local periodicamente e ao voltar pro app, para
+            // virar o dia sozinho mesmo se o app ficar aberto até a meia-noite.
+            useEffect(() => {
+                const checkDate = () => {
+                    const current = getLocalDateStr();
+                    setToday(prev => (prev !== current ? current : prev));
+                };
+                const interval = setInterval(checkDate, 30000);
+                document.addEventListener('visibilitychange', checkDate);
+                return () => {
+                    clearInterval(interval);
+                    document.removeEventListener('visibilitychange', checkDate);
+                };
+            }, []);
 
             const getDefaultHabits = () => [
                 { id: 1, name: 'Exercício', history: {} },
@@ -664,20 +686,18 @@
                     if (cancelled) return;
                     if (data) {
                         setHabits(data.habits || getDefaultHabits());
-                        setCompletedToday(data.completedToday || {});
                     } else {
                         const defaultHabits = getDefaultHabits();
                         setHabits(defaultHabits);
-                        saveData(defaultHabits, {});
+                        saveData(defaultHabits);
                     }
                 })();
                 return () => { cancelled = true; };
             }, []);
 
-            const saveData = (habitsToSave, completedTodayToSave) => {
+            const saveData = (habitsToSave) => {
                 const payload = {
                     habits: habitsToSave,
-                    completedToday: completedTodayToSave,
                     lastUpdated: new Date().toISOString()
                 };
                 try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch (e) { /* ignora */ }
@@ -685,20 +705,17 @@
             };
 
             const toggleHabitToday = (habitId) => {
-                const newCompleted = { ...completedToday, [habitId]: !completedToday[habitId] };
-                setCompletedToday(newCompleted);
-
                 const updatedHabits = habits.map(h => {
                     if (h.id === habitId) {
                         return {
                             ...h,
-                            history: { ...h.history, [today]: newCompleted[habitId] }
+                            history: { ...h.history, [today]: !h.history[today] }
                         };
                     }
                     return h;
                 });
                 setHabits(updatedHabits);
-                saveData(updatedHabits, newCompleted);
+                saveData(updatedHabits);
             };
 
             const addHabit = () => {
@@ -712,19 +729,17 @@
                 setHabits(updated);
                 setNewHabitName('');
                 setShowAddForm(false);
-                saveData(updated, completedToday);
+                saveData(updated);
             };
 
             const deleteHabit = (id) => {
                 const updated = habits.filter(h => h.id !== id);
                 setHabits(updated);
-                const newCompleted = { ...completedToday };
-                delete newCompleted[id];
-                saveData(updated, newCompleted);
+                saveData(updated);
             };
 
             const getProgressStats = () => {
-                const completedTodayCount = habits.filter(h => completedToday[h.id]).length;
+                const completedTodayCount = habits.filter(h => h.history[today]).length;
                 const dailyPercent = habits.length > 0 ? Math.round((completedTodayCount / habits.length) * 100) : 0;
                 return { dailyPercent, completedTodayCount };
             };
@@ -811,13 +826,13 @@
                                 {habits.map(habit => (
                                     <div
                                         key={habit.id}
-                                        className={`habit-item ${completedToday[habit.id] ? 'completed' : ''}`}
+                                        className={`habit-item ${habit.history[today] ? 'completed' : ''}`}
                                         onClick={() => toggleHabitToday(habit.id)}
                                     >
                                         <input
                                             type="checkbox"
                                             className="habit-checkbox"
-                                            checked={completedToday[habit.id] || false}
+                                            checked={habit.history[today] || false}
                                             onChange={() => { }}
                                         />
                                         <div className="habit-name">{habit.name}</div>
