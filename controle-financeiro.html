@@ -154,12 +154,10 @@
 
   async function load(){
     try{
-      const r = await window.storage.get('transacoes', false);
-      transacoes = r ? JSON.parse(r.value) : [];
+      transacoes = JSON.parse(localStorage.getItem('transacoes') || '[]');
     }catch(e){ transacoes = []; }
     try{
-      const rr = await window.storage.get('seeds_removed', false);
-      seedsRemoved = rr ? JSON.parse(rr.value) : [];
+      seedsRemoved = JSON.parse(localStorage.getItem('seeds_removed') || '[]');
     }catch(e){ seedsRemoved = []; }
 
     const seedEntries = [
@@ -179,7 +177,7 @@
     render();
   }
   async function save(){
-    await window.storage.set('transacoes', JSON.stringify(transacoes), false);
+    localStorage.setItem('transacoes', JSON.stringify(transacoes));
   }
 
   function projectedMonthsFor(tx){
@@ -364,7 +362,7 @@
         const id = btn.dataset.id;
         if(id.startsWith('seed-') && !seedsRemoved.includes(id)){
           seedsRemoved.push(id);
-          await window.storage.set('seeds_removed', JSON.stringify(seedsRemoved), false);
+          localStorage.setItem('seeds_removed', JSON.stringify(seedsRemoved));
         }
         transacoes = transacoes.filter(t=>t.id!==id);
         await save();
