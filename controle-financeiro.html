@@ -189,7 +189,8 @@
     meta: 100000,
     patrimonioBase: 33417.98,
     aporteAlvo: 2000,
-    retornoAnual: 0.13
+    retornoAnual: 0.13,
+    diaFechamento: 10
   };
 
   function fmt(n){
@@ -198,6 +199,17 @@
     return (neg ? '-R$ ' : 'R$ ') + v;
   }
   function monthKey(d){ return d.slice(0,7); }
+  // Data da compra -> mes da fatura, considerando o dia de fechamento do cartao.
+  // Compra depois do dia de fechamento cai na fatura do mes seguinte.
+  function faturaMonthFor(dateStr){
+    const [y,m,d] = dateStr.split('-').map(Number);
+    let fy = y, fm = m;
+    if(d > CONFIG.diaFechamento){
+      fm += 1;
+      if(fm > 12){ fm = 1; fy += 1; }
+    }
+    return fy + '-' + String(fm).padStart(2,'0');
+  }
   function addMonths(ym, n){
     let [y,m] = ym.split('-').map(Number);
     m += n;
@@ -257,7 +269,7 @@
   function projectedMonthsFor(tx){
     const out = [];
     const restantes = tx.parcelaTotal - tx.parcelaAtual + 1;
-    const startYM = monthKey(tx.data);
+    const startYM = faturaMonthFor(tx.data);
     for(let i=0;i<restantes;i++){ out.push(addMonths(startYM, i)); }
     return out;
   }
@@ -362,7 +374,9 @@
           : transacoes.slice().reverse().map(function(t){
               const titulo = t.tipo==='gasto' ? (t.categoria || 'Gasto') : 'Aporte';
               const desc = (t.tipo==='gasto' && t.subcategoria) ? ' \u00b7 ' + t.subcategoria : '';
-              let meta = monthLabel(monthKey(t.data));
+              let meta = t.tipo==='gasto'
+                ? ('fatura ' + monthLabel(faturaMonthFor(t.data)))
+                : monthLabel(monthKey(t.data));
               if(t.tipo==='gasto' && t.parcelaTotal > 1){ meta += ' \u00b7 parcela ' + t.parcelaAtual + '/' + t.parcelaTotal; }
               if(t.tipo==='aporte' && t.destino){ meta += ' \u00b7 ' + t.destino; }
               return '<div class="log-item">'
