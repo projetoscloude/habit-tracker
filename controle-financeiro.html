@@ -101,10 +101,31 @@
     border-bottom:1px solid #2a2f25;
     font-size:13px;
   }
+  .committed-row{ cursor:pointer; border-radius:6px; transition:background .15s ease; }
+  .committed-row:hover{ background:#262c21; }
+  .committed-row.active{ background:#2a3324; margin:0 -8px; padding-left:10px; padding-right:10px; }
+  .committed-row.active .mes{ color:var(--paper); }
   .committed-row .mes{ color:#c5c1ae; font-weight:500; }
   .committed-row .nums{ font-family:var(--mono); font-size:12.5px; white-space:nowrap; }
   .committed-row .neg{ color:var(--rust); }
   .committed-row .pos{ color:#8fb08c; }
+
+  /* ---- pie chart ---- */
+  .pie-section{ margin-bottom:28px; }
+  .pie-hint{ font-size:11.5px; color:#8a8674; margin:-4px 0 14px; }
+  .pie-wrap{ display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+  .pie-chart{
+    width:140px; height:140px; min-width:140px;
+    border-radius:50%;
+    background:var(--edge);
+    flex-shrink:0;
+  }
+  .pie-legend{ flex:1; min-width:180px; display:flex; flex-direction:column; gap:9px; }
+  .pie-legend-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; }
+  .pie-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .pie-legend-cat{ flex:1; color:#c5c1ae; overflow-wrap:anywhere; }
+  .pie-legend-num{ font-family:var(--mono); font-size:12px; color:var(--paper); white-space:nowrap; }
+  .pie-empty{ color:#8a8674; font-size:13px; font-style:italic; }
 
   /* ---- form ---- */
   form.entry{
@@ -237,6 +258,22 @@
 
   let transacoes = [];
   let seedsRemoved = [];
+  let mesSelecionado = null;
+
+  const PALETTE = ['#c77a63','#5c7a5a','#c9a13b','#6b8fa3','#a35c8f','#b0553f','#4f7d6c','#9b7bb8','#d4a574','#8a9a5b'];
+
+  function categoriasDoMes(ym){
+    const map = {};
+    transacoes.filter(function(t){ return t.tipo==='gasto'; }).forEach(function(t){
+      if(projectedMonthsFor(t).indexOf(ym) !== -1){
+        const cat = t.categoria || 'Outros';
+        map[cat] = (map[cat]||0) + t.valor;
+      }
+    });
+    return Object.keys(map)
+      .map(function(cat){ return { categoria:cat, valor:map[cat] }; })
+      .sort(function(a,b){ return b.valor - a.valor; });
+  }
 
   function load(){
     try{
@@ -310,6 +347,17 @@
     const pct = Math.min(100, (patr / CONFIG.meta) * 100);
     const meses = mesesAteMeta(patr);
     const proximosMeses = [1,2,3].map(function(i){ return addMonths(cur, i); });
+    const mesAtivo = (mesSelecionado && proximosMeses.indexOf(mesSelecionado) !== -1) ? mesSelecionado : proximosMeses[0];
+    const catsAtivo = categoriasDoMes(mesAtivo);
+    const totalAtivo = catsAtivo.reduce(function(s,c){ return s + c.valor; }, 0);
+    let acumulado = 0;
+    const gradiente = totalAtivo > 0
+      ? catsAtivo.map(function(c, i){
+          const start = acumulado;
+          acumulado += (c.valor / totalAtivo) * 100;
+          return PALETTE[i % PALETTE.length] + ' ' + start.toFixed(2) + '% ' + acumulado.toFixed(2) + '%';
+        }).join(', ')
+      : null;
 
     let html = ''
       + '<h1>Controle financeiro</h1>'
@@ -334,7 +382,7 @@
       +   proximosMeses.map(function(ym){
             const g = map[ym] || 0;
             const s = CONFIG.renda - g;
-            return '<div class="committed-row">'
+            return '<div class="committed-row' + (ym===mesAtivo ? ' active' : '') + '" data-ym="' + ym + '">'
                  +   '<span class="mes">' + monthLabel(ym) + '</span>'
                  +   '<span class="nums">' + fmt(g) + ' \u00b7 '
                  +     '<span class="' + (s>=0 ? 'pos' : 'neg') + '">' + fmt(s) + ' sobra</span>'
@@ -367,6 +415,26 @@
       +   '<button type="submit" class="submit-btn">Adicionar</button>'
       + '</form>'
 
+      + '<div class="pie-section">'
+      +   '<div class="section-title">Gasto por categoria \u2014 fatura ' + monthLabel(mesAtivo) + '</div>'
+      +   '<div class="pie-hint">Toque em um m\u00eas em "Comprometido conhecido" acima para ver outra fatura.</div>'
+      +   (totalAtivo > 0
+          ? '<div class="pie-wrap">'
+            +   '<div class="pie-chart" style="background:conic-gradient(' + gradiente + ')"></div>'
+            +   '<div class="pie-legend">'
+            +     catsAtivo.map(function(c, i){
+                    const pctCat = (c.valor / totalAtivo) * 100;
+                    return '<div class="pie-legend-row">'
+                         +   '<span class="pie-dot" style="background:' + PALETTE[i % PALETTE.length] + '"></span>'
+                         +   '<span class="pie-legend-cat">' + c.categoria + '</span>'
+                         +   '<span class="pie-legend-num">' + pctCat.toFixed(1) + '% \u00b7 ' + fmt(c.valor) + '</span>'
+                         + '</div>';
+                  }).join('')
+            +   '</div>'
+            + '</div>'
+          : '<div class="pie-empty">Nenhum gasto categorizado lan\u00e7ado para esta fatura ainda.</div>')
+      + '</div>'
+
       + '<div class="section-title">Lan\u00e7amentos recentes</div>'
       + '<div id="log">'
       +   (transacoes.length === 0
@@ -388,6 +456,13 @@
       + '</div>';
 
     document.getElementById('app').innerHTML = html;
+
+    document.querySelectorAll('.committed-row').forEach(function(row){
+      row.addEventListener('click', function(){
+        mesSelecionado = row.dataset.ym;
+        render();
+      });
+    });
 
     let tipoAtual = 'gasto';
     document.querySelectorAll('.toggle-btn').forEach(function(btn){
