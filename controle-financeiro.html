@@ -67,7 +67,6 @@
     padding:14px 16px;
     min-width:0;
   }
-  .card.wide{ grid-column:1 / -1; }
   .card .label{ font-size:11px; color:var(--muted); margin-bottom:6px; }
   .card .value{
     font-family:var(--mono);
@@ -77,8 +76,6 @@
     overflow-wrap:anywhere;
   }
   .card.small .value{ font-size:clamp(14px, 4vw, 16px); }
-  .bar-track{ height:6px; background:var(--edge); border-radius:4px; margin-top:12px; overflow:hidden; }
-  .bar-fill{ height:100%; background:var(--moss); border-radius:4px; transition:width .5s ease; }
 
   .section-title{
     font-family:var(--serif);
@@ -110,21 +107,21 @@
   .committed-row .neg{ color:var(--rust); }
   .committed-row .pos{ color:#8fb08c; }
 
-  /* ---- pie chart ---- */
+  /* ---- gasto por categoria ---- */
   .pie-section{ margin-bottom:28px; }
   .pie-hint{ font-size:11.5px; color:#8a8674; margin:-4px 0 14px; }
-  .pie-wrap{ display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
-  .pie-chart{
-    width:140px; height:140px; min-width:140px;
-    border-radius:50%;
-    background:var(--edge);
-    flex-shrink:0;
+  .pie-legend{ display:flex; flex-direction:column; }
+  .pie-legend-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:2px 10px;
+    padding:10px 2px;
+    border-bottom:1px solid #2a2f25;
+    font-size:13px;
   }
-  .pie-legend{ flex:1; min-width:180px; display:flex; flex-direction:column; gap:9px; }
-  .pie-legend-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; }
-  .pie-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-  .pie-legend-cat{ flex:1; color:#c5c1ae; overflow-wrap:anywhere; }
-  .pie-legend-num{ font-family:var(--mono); font-size:12px; color:var(--paper); white-space:nowrap; }
+  .pie-legend-cat{ color:#c5c1ae; font-weight:500; overflow-wrap:anywhere; }
+  .pie-legend-num{ font-family:var(--mono); font-size:12.5px; color:var(--paper); white-space:nowrap; }
   .pie-empty{ color:#8a8674; font-size:13px; font-style:italic; }
 
   /* ---- form ---- */
@@ -194,8 +191,6 @@
 
   /* ---- telas maiores ---- */
   @media (min-width:560px){
-    .cards{ grid-template-columns:1.4fr 1fr 1fr; }
-    .card.wide{ grid-column:auto; }
     .committed-row .nums{ font-size:13px; }
   }
 </style>
@@ -259,8 +254,6 @@
   let transacoes = [];
   let seedsRemoved = [];
   let mesSelecionado = null;
-
-  const PALETTE = ['#c77a63','#5c7a5a','#c9a13b','#6b8fa3','#a35c8f','#b0553f','#4f7d6c','#9b7bb8','#d4a574','#8a9a5b'];
 
   function categoriasDoMes(ym){
     const map = {};
@@ -344,29 +337,15 @@
     const map = committedByMonth();
     const cur = todayYM();
     const patr = patrimonioAtual();
-    const pct = Math.min(100, (patr / CONFIG.meta) * 100);
     const meses = mesesAteMeta(patr);
     const proximosMeses = [1,2,3].map(function(i){ return addMonths(cur, i); });
     const mesAtivo = (mesSelecionado && proximosMeses.indexOf(mesSelecionado) !== -1) ? mesSelecionado : proximosMeses[0];
     const catsAtivo = categoriasDoMes(mesAtivo);
     const totalAtivo = catsAtivo.reduce(function(s,c){ return s + c.valor; }, 0);
-    let acumulado = 0;
-    const gradiente = totalAtivo > 0
-      ? catsAtivo.map(function(c, i){
-          const start = acumulado;
-          acumulado += (c.valor / totalAtivo) * 100;
-          return PALETTE[i % PALETTE.length] + ' ' + start.toFixed(2) + '% ' + acumulado.toFixed(2) + '%';
-        }).join(', ')
-      : null;
 
     let html = ''
       + '<h1>Controle financeiro</h1>'
       + '<div class="cards">'
-      +   '<div class="card wide">'
-      +     '<div class="label">Patrim\u00f4nio investido</div>'
-      +     '<div class="value">' + fmt(patr) + '</div>'
-      +     '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>'
-      +   '</div>'
       +   '<div class="card small">'
       +     '<div class="label">Aporte mensal (meta)</div>'
       +     '<div class="value">' + fmt(CONFIG.aporteAlvo) + '</div>'
@@ -419,18 +398,14 @@
       +   '<div class="section-title">Gasto por categoria \u2014 fatura ' + monthLabel(mesAtivo) + '</div>'
       +   '<div class="pie-hint">Toque em um m\u00eas em "Comprometido conhecido" acima para ver outra fatura.</div>'
       +   (totalAtivo > 0
-          ? '<div class="pie-wrap">'
-            +   '<div class="pie-chart" style="background:conic-gradient(' + gradiente + ')"></div>'
-            +   '<div class="pie-legend">'
-            +     catsAtivo.map(function(c, i){
-                    const pctCat = (c.valor / totalAtivo) * 100;
-                    return '<div class="pie-legend-row">'
-                         +   '<span class="pie-dot" style="background:' + PALETTE[i % PALETTE.length] + '"></span>'
-                         +   '<span class="pie-legend-cat">' + c.categoria + '</span>'
-                         +   '<span class="pie-legend-num">' + pctCat.toFixed(1) + '% \u00b7 ' + fmt(c.valor) + '</span>'
-                         + '</div>';
-                  }).join('')
-            +   '</div>'
+          ? '<div class="pie-legend">'
+            +   catsAtivo.map(function(c){
+                  const pctCat = (c.valor / totalAtivo) * 100;
+                  return '<div class="pie-legend-row">'
+                       +   '<span class="pie-legend-cat">' + c.categoria + '</span>'
+                       +   '<span class="pie-legend-num">' + pctCat.toFixed(1) + '% \u00b7 ' + fmt(c.valor) + '</span>'
+                       + '</div>';
+                }).join('')
             + '</div>'
           : '<div class="pie-empty">Nenhum gasto categorizado lan\u00e7ado para esta fatura ainda.</div>')
       + '</div>'
