@@ -1,0 +1,9 @@
+{
+  "name": "Controle financeiro",
+  "short_name": "Financeiro",
+  "start_url": "./controle-financeiro.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1b1f1c",
+  "theme_color": "#1b1f1c"
+}
